@@ -187,7 +187,7 @@ async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> 
 	}
 
 	const title = await vscode.window.showInputBox({
-		title: "Cheats: New Cheat (1/3) — Title",
+		title: "Cheats: New Cheat (1/3): Title",
 		prompt: `Required, max ${TITLE_MAX_LENGTH} characters`,
 		ignoreFocusOut: true,
 		validateInput: value => {
@@ -199,7 +199,7 @@ async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> 
 	if (!title) return;
 
 	const typeName = await vscode.window.showInputBox({
-		title: "Cheats: New Cheat (2/3) — Type",
+		title: "Cheats: New Cheat (2/3): Type",
 		prompt: `Required, max ${TYPE_MAX_LENGTH} characters, e.g. "javascript", "git", "regex". Unrecognized types are created automatically.`,
 		ignoreFocusOut: true,
 		validateInput: value => {
@@ -215,7 +215,7 @@ async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> 
 			{ label: "Private", description: "Only visible to you", isPrivate: true },
 			{ label: "Public", description: "Visible to everyone", isPrivate: false }
 		],
-		{ title: "Cheats: New Cheat (3/3) — Visibility", ignoreFocusOut: true }
+		{ title: "Cheats: New Cheat (3/3): Visibility", ignoreFocusOut: true }
 	);
 	if (!visibility) return;
 
@@ -246,6 +246,15 @@ async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> 
 		vscode.window.showInformationMessage(`Cheats: Saved "${cheat.title}" (${id}).`);
 	} catch (error) {
 		if (error instanceof Error && error.name === "AbortError") return;
+		if (error instanceof ApiError && error.status === 401) {
+			const choice = await vscode.window.showErrorMessage(
+				"Cheats: Creating a cheat needs a read + write API key, and either yours doesn't have write " +
+					"access or it's no longer valid. Generate a read + write key from your site's /user page.",
+				"Set API Key"
+			);
+			if (choice === "Set API Key") await setApiKey(secrets);
+			return;
+		}
 		const message = error instanceof ApiError ? error.message : String(error);
 		vscode.window.showErrorMessage(`Cheats: ${message}`);
 	}
