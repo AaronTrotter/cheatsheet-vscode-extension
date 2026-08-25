@@ -1,36 +1,40 @@
 # Cheats
 
-Type `/cheats <query>` anywhere in an editor to get inline IntelliSense suggestions pulled live from your cheatsheet site, pick one to insert the full snippet.
+Search, insert, and save code snippets from your [cheatsheet site](https://aaronscheatsheet.web.app) without leaving VS Code.
 
 ## Setup
 
-1. On your cheatsheet site, go to `/user` and generate an API key. Requires a Pro-tier account, the API endpoints this extension calls are Pro-only. A **read-scoped** key is enough for search; if you also want to create cheats from VS Code, generate a **read + write** key instead.
-2. In VS Code, run `Cheats: Set API Key` from the Command Palette and paste it in. It's stored in VS Code's SecretStorage, never in a settings file.
-3. If your site isn't at `https://aaronscheatsheet.web.app`, set `cheats.baseUrl` in your VS Code settings.
+1. On your cheatsheet site, go to `/user` and generate an API key. This requires a Pro-tier account, since the endpoints this extension uses are Pro-only. A read-scoped key covers search; if you also want to create cheats from VS Code, generate a read + write key instead.
+2. In VS Code, open the Command Palette and run `Cheats: Set API Key`, then paste the key in. It's stored in VS Code's SecretStorage, not in a settings file.
+3. If your site isn't hosted at `https://aaronscheatsheet.web.app`, set `cheats.baseUrl` in your VS Code settings.
 
-## Use
+## Search while you type
 
-In any file, type `/cheats react hook` (or whatever you're searching for). After a couple characters, IntelliSense will list matching cheats from your site, ranked by relevance. Accept one to replace the trigger text with the full snippet body.
+Type `/cheats` followed by your search terms anywhere in an editor, for example `/cheats react hook`. After a couple of characters, IntelliSense lists matching cheats from your site, ranked by relevance. Accept a suggestion to replace what you typed with the full snippet.
 
-Alternatively, select some text (or place your cursor in a word) and run **Cheats: Search Selection** (`Ctrl+Alt+/`, or `Cmd+Alt+/` on Mac) from the Command Palette or its keybinding. It pre-fills a search box with your selection, shows matching results in a quick-pick list, and replaces the selection with the chosen snippet's full body.
+## Search a selection
 
-To save code back to your cheatsheet, select it and run **Cheats: Create Cheat from Selection** (`Ctrl+Alt+.`, or `Cmd+Alt+.` on Mac). You'll be asked for a title, a type (existing or new), and whether it's private, then the selection is saved as the cheat's body. This requires a **read + write** API key (see Setup) and enforces the same limits as the site itself:
+Select some text (or just place your cursor in a word) and run `Cheats: Search Selection` (`Ctrl+Alt+/`, or `Cmd+Alt+/` on Mac). It fills a search box with your selection, shows the matches in a quick-pick list, and replaces the selection with whichever result you choose.
 
-- Title: required, max 40 characters
-- Type: required, max 15 characters
-- Body (your selection): max 100 lines, max 600 characters per line
-- Whole cheat: max 10KB
+## Save a snippet
 
-## Develop
+Select the code you want to keep and run `Cheats: Create Cheat from Selection` (`Ctrl+Alt+.`, or `Cmd+Alt+.` on Mac). You'll be prompted for a title, a type (an existing one or a new one), and whether the cheat should be private, then the selection is saved as the cheat's body. This needs a read + write API key (see Setup) and follows the same limits as the site:
+
+- Title: required, 40 characters max
+- Type: required, 15 characters max
+- Body: 100 lines max, 600 characters per line max
+- Whole cheat: 10KB max
+
+## Notes
+
+- Search uses your site's `/mcp/search` and `/mcp/getCheat` endpoints, the same ones behind the Model Context Protocol integration, so usage counts against the same shared daily quota (500 requests per account per day).
+- Results only include cheats you'd normally see: your own private ones plus everything public.
+
+## Developing
 
 ```
 npm install
 npm run compile
 ```
 
-Press F5 to launch an Extension Development Host with the extension loaded.
-
-## Notes
-
-- Search hits your site's `/mcp/search` and `/mcp/getCheat` endpoints, the same ones the Model Context Protocol integration uses, so it's counted against the same shared daily API quota (500 requests/day per account).
-- Only shows cheats you'd normally be able to see: your own private ones plus everything public.
+Then press F5 to launch an Extension Development Host with the extension loaded.
