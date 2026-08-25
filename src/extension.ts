@@ -248,11 +248,15 @@ async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> 
 		if (error instanceof Error && error.name === "AbortError") return;
 		if (error instanceof ApiError && error.status === 401) {
 			const choice = await vscode.window.showErrorMessage(
-				"Cheats: Creating a cheat needs a read + write API key, and either yours doesn't have write " +
-					"access or it's no longer valid. Generate a read + write key from your site's /user page.",
-				"Set API Key"
+				"Cheats: Creating a cheat needs a Pro account and a read + write API key. Either your key " +
+					"doesn't have write access, is out of date, or your account isn't Pro yet.",
+				"Set API Key",
+				"Upgrade to Pro"
 			);
 			if (choice === "Set API Key") await setApiKey(secrets);
+			else if (choice === "Upgrade to Pro") {
+				await vscode.env.openExternal(vscode.Uri.parse("https://cheats.aarontrotter.com/billing"));
+			}
 			return;
 		}
 		const message = error instanceof ApiError ? error.message : String(error);

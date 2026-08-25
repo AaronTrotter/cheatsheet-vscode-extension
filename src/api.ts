@@ -55,8 +55,8 @@ export async function getApiKey(secrets: vscode.SecretStorage): Promise<string |
 export async function setApiKey(secrets: vscode.SecretStorage): Promise<void> {
 	const key = await vscode.window.showInputBox({
 		title: "Cheats: Set API Key",
-		prompt: "Paste an API key from your cheatsheet site's /user page. Read-only search works with a " +
-			"read-scoped key; creating cheats needs a read + write key.",
+		prompt: "Paste an API key from cheats.aarontrotter.com/user. A free account covers a read-scoped " +
+			"key for search; creating cheats needs a read + write key, which requires Pro (cheats.aarontrotter.com/billing).",
 		password: true,
 		ignoreFocusOut: true
 	});
