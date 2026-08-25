@@ -2,7 +2,7 @@
   "name": "aaronscheatsheet",
   "displayName": "Cheats",
   "description": "Search, insert, and save snippets from Cheatsheet (cheats.aarontrotter.com) without leaving the editor.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "AaronTrotter",
   "icon": "icon.png",
   "license": "MIT",
