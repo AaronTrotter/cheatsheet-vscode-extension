@@ -1,0 +1,75 @@
+{
+  "name": "aaronscheatsheet",
+  "displayName": "Cheats",
+  "description": "Search your cheatsheet site's snippets inline by typing /cheats <query>",
+  "version": "0.0.1",
+  "publisher": "aaronjtrotter",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AaronTrotter/cheatsheet-vscode-extension.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AaronTrotter/cheatsheet-vscode-extension/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Snippets", "Other"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "cheats.setApiKey",
+        "title": "Cheats: Set API Key"
+      },
+      {
+        "command": "cheats.searchSelection",
+        "title": "Cheats: Search Selection"
+      },
+      {
+        "command": "cheats.createCheat",
+        "title": "Cheats: Create Cheat from Selection"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "cheats.searchSelection",
+        "key": "ctrl+alt+/",
+        "mac": "cmd+alt+/",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "cheats.createCheat",
+        "key": "ctrl+alt+.",
+        "mac": "cmd+alt+.",
+        "when": "editorHasSelection"
+      }
+    ],
+    "configuration": {
+      "title": "Cheats",
+      "properties": {
+        "cheats.baseUrl": {
+          "type": "string",
+          "default": "https://aaronscheatsheet.web.app",
+          "description": "Base URL of your cheatsheet site (no trailing slash)."
+        },
+        "cheats.limit": {
+          "type": "number",
+          "default": 10,
+          "description": "Max number of suggestions to fetch per search."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}

@@ -1,0 +1,8 @@
+.vscode/**
+src/**
+.gitignore
+.vscodeignore
+tsconfig.json
+CLAUDE.md
+**/*.map
+**/.git/**
