@@ -4,6 +4,7 @@
   "description": "Search your cheatsheet site's snippets inline by typing /cheats <query>",
   "version": "0.0.1",
   "publisher": "aaronjtrotter",
+  "icon": "icon.png",
   "license": "MIT",
   "repository": {
     "type": "git",
