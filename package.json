@@ -1,7 +1,7 @@
 {
   "name": "aaronscheatsheet",
   "displayName": "Cheatsheet Sidekick",
-  "description": "Search, insert, and save snippets from Cheatsheet (cheats.aarontrotter.com) without leaving the editor.",
+  "description": "\"Built for Me, Too Good to Keep to Myself.\" Search, insert, and save Cheatsheet snippets without leaving the editor.",
   "version": "0.0.4",
   "publisher": "AaronTrotter",
   "icon": "icon.png",
