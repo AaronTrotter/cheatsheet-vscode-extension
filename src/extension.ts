@@ -92,7 +92,7 @@ class CheatsCompletionProvider implements vscode.CompletionItemProvider {
 		if (now - this.lastErrorShownAt < 5000) return;
 		this.lastErrorShownAt = now;
 		const message = error instanceof ApiError ? error.message : String(error);
-		vscode.window.showErrorMessage(`Cheats: ${message}`);
+		vscode.window.showErrorMessage(`Cheatsheet Sidekick: ${message}`);
 	}
 }
 
@@ -108,7 +108,7 @@ async function searchSelectionCommand(secrets: vscode.SecretStorage): Promise<vo
 	const query = range ? editor.document.getText(range) : "";
 
 	const input = await vscode.window.showInputBox({
-		title: "Cheats: Search",
+		title: "Cheatsheet Sidekick: Search",
 		prompt: "Search your cheatsheet site",
 		value: query,
 		valueSelection: query ? [0, query.length] : undefined,
@@ -120,7 +120,7 @@ async function searchSelectionCommand(secrets: vscode.SecretStorage): Promise<vo
 	let results;
 	try {
 		results = await vscode.window.withProgress(
-			{ location: vscode.ProgressLocation.Notification, title: "Cheats: Searching…", cancellable: true },
+			{ location: vscode.ProgressLocation.Notification, title: "Cheatsheet Sidekick: Searching…", cancellable: true },
 			(_progress, token) => {
 				token.onCancellationRequested(() => controller.abort());
 				return searchCheats(input.trim(), secrets, controller.signal);
@@ -129,12 +129,12 @@ async function searchSelectionCommand(secrets: vscode.SecretStorage): Promise<vo
 	} catch (error) {
 		if (error instanceof Error && error.name === "AbortError") return;
 		const message = error instanceof ApiError ? error.message : String(error);
-		vscode.window.showErrorMessage(`Cheats: ${message}`);
+		vscode.window.showErrorMessage(`Cheatsheet Sidekick: ${message}`);
 		return;
 	}
 
 	if (results.length === 0) {
-		vscode.window.showInformationMessage("Cheats: No results found.");
+		vscode.window.showInformationMessage("Cheatsheet Sidekick: No results found.");
 		return;
 	}
 
@@ -145,7 +145,7 @@ async function searchSelectionCommand(secrets: vscode.SecretStorage): Promise<vo
 			detail: r.snippet.replace(/\s+/g, " ").trim(),
 			result: r
 		})),
-		{ title: "Cheats: Select a result to insert", matchOnDescription: true, matchOnDetail: true }
+		{ title: "Cheatsheet Sidekick: Select a result to insert", matchOnDescription: true, matchOnDetail: true }
 	);
 	if (!picked) return;
 
@@ -154,7 +154,7 @@ async function searchSelectionCommand(secrets: vscode.SecretStorage): Promise<vo
 		body = await getCheatBody(picked.result.id, secrets, controller.signal);
 	} catch (error) {
 		const message = error instanceof ApiError ? error.message : String(error);
-		vscode.window.showErrorMessage(`Cheats: ${message}`);
+		vscode.window.showErrorMessage(`Cheatsheet Sidekick: ${message}`);
 		return;
 	}
 
@@ -171,23 +171,23 @@ async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> 
 	const editor = vscode.window.activeTextEditor;
 	const body = editor && !editor.selection.isEmpty ? editor.document.getText(editor.selection) : undefined;
 	if (!body) {
-		vscode.window.showErrorMessage("Cheats: Select the code/text to save as a cheat first.");
+		vscode.window.showErrorMessage("Cheatsheet Sidekick: Select the code/text to save as a cheat first.");
 		return;
 	}
 
 	const lines = body.split(/\r\n|\r|\n/);
 	if (lines.length > BODY_MAX_LINES) {
-		vscode.window.showErrorMessage(`Cheats: Selection has ${lines.length} lines; cheats are limited to ${BODY_MAX_LINES}.`);
+		vscode.window.showErrorMessage(`Cheatsheet Sidekick: Selection has ${lines.length} lines; cheats are limited to ${BODY_MAX_LINES}.`);
 		return;
 	}
 	const longLine = lines.find(line => line.length > BODY_MAX_LINE_LENGTH);
 	if (longLine !== undefined) {
-		vscode.window.showErrorMessage(`Cheats: A line in the selection exceeds the ${BODY_MAX_LINE_LENGTH} character limit.`);
+		vscode.window.showErrorMessage(`Cheatsheet Sidekick: A line in the selection exceeds the ${BODY_MAX_LINE_LENGTH} character limit.`);
 		return;
 	}
 
 	const title = await vscode.window.showInputBox({
-		title: "Cheats: New Cheat (1/3): Title",
+		title: "Cheatsheet Sidekick: New Cheat (1/3): Title",
 		prompt: `Required, max ${TITLE_MAX_LENGTH} characters`,
 		ignoreFocusOut: true,
 		validateInput: value => {
@@ -199,7 +199,7 @@ async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> 
 	if (!title) return;
 
 	const typeName = await vscode.window.showInputBox({
-		title: "Cheats: New Cheat (2/3): Type",
+		title: "Cheatsheet Sidekick: New Cheat (2/3): Type",
 		prompt: `Required, max ${TYPE_MAX_LENGTH} characters, e.g. "javascript", "git", "regex". Unrecognized types are created automatically.`,
 		ignoreFocusOut: true,
 		validateInput: value => {
@@ -215,7 +215,7 @@ async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> 
 			{ label: "Private", description: "Only visible to you", isPrivate: true },
 			{ label: "Public", description: "Visible to everyone", isPrivate: false }
 		],
-		{ title: "Cheats: New Cheat (3/3): Visibility", ignoreFocusOut: true }
+		{ title: "Cheatsheet Sidekick: New Cheat (3/3): Visibility", ignoreFocusOut: true }
 	);
 	if (!visibility) return;
 
@@ -229,7 +229,7 @@ async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> 
 	const recordSize = new TextEncoder().encode(JSON.stringify(cheat)).length;
 	if (recordSize > MAX_RECORD_SIZE_BYTES) {
 		vscode.window.showErrorMessage(
-			`Cheats: This cheat is ${(recordSize / 1024).toFixed(1)}KB, over the ${MAX_RECORD_SIZE_BYTES / 1024}KB limit.`
+			`Cheatsheet Sidekick: This cheat is ${(recordSize / 1024).toFixed(1)}KB, over the ${MAX_RECORD_SIZE_BYTES / 1024}KB limit.`
 		);
 		return;
 	}
@@ -237,18 +237,18 @@ async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> 
 	const controller = new AbortController();
 	try {
 		const id = await vscode.window.withProgress(
-			{ location: vscode.ProgressLocation.Notification, title: "Cheats: Saving…", cancellable: true },
+			{ location: vscode.ProgressLocation.Notification, title: "Cheatsheet Sidekick: Saving…", cancellable: true },
 			(_progress, token) => {
 				token.onCancellationRequested(() => controller.abort());
 				return addCheat(cheat, secrets, controller.signal);
 			}
 		);
-		vscode.window.showInformationMessage(`Cheats: Saved "${cheat.title}" (${id}).`);
+		vscode.window.showInformationMessage(`Cheatsheet Sidekick: Saved "${cheat.title}" (${id}).`);
 	} catch (error) {
 		if (error instanceof Error && error.name === "AbortError") return;
 		if (error instanceof ApiError && error.status === 401) {
 			const choice = await vscode.window.showErrorMessage(
-				"Cheats: Creating a cheat needs a Pro account and a read + write API key. Either your key " +
+				"Cheatsheet Sidekick: Creating a cheat needs a Pro account and a read + write API key. Either your key " +
 					"doesn't have write access, is out of date, or your account isn't Pro yet.",
 				"Set API Key",
 				"Upgrade to Pro"
@@ -260,7 +260,7 @@ async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> 
 			return;
 		}
 		const message = error instanceof ApiError ? error.message : String(error);
-		vscode.window.showErrorMessage(`Cheats: ${message}`);
+		vscode.window.showErrorMessage(`Cheatsheet Sidekick: ${message}`);
 	}
 }
 

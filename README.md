@@ -1,4 +1,4 @@
-# Cheats
+# Cheatsheet Sidekick
 
 Search, insert, and save snippets from [Cheatsheet](https://cheats.aarontrotter.com) without leaving VS Code.
 
@@ -9,7 +9,7 @@ Search, insert, and save snippets from [Cheatsheet](https://cheats.aarontrotter.
 ## Getting started
 
 1. On [cheats.aarontrotter.com](https://cheats.aarontrotter.com), sign in (or create a free account) and go to `/user`. In the API Access section, generate an API key. Pick read-only if you just want to search, or read + write if you also want to create cheats from VS Code (Pro required for write, see below).
-2. Back in VS Code, open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run `Cheats: Set API Key`, then paste the key in. It's kept in VS Code's secure SecretStorage, never written to a settings file.
+2. Back in VS Code, open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run `Cheatsheet Sidekick: Set API Key`, then paste the key in. It's kept in VS Code's secure SecretStorage, never written to a settings file.
 3. You're set. Try typing `/cheats` in any file to search.
 
 ## What you can do
@@ -20,11 +20,11 @@ Type `/cheats` followed by your search terms anywhere in an editor, for example 
 
 ### Search a selection
 
-Select some text (or just place your cursor in a word) and run `Cheats: Search Selection` (`Ctrl+Alt+/`, or `Cmd+Alt+/` on Mac). It fills a search box with your selection, shows the matches in a quick-pick list, and replaces the selection with whichever result you choose.
+Select some text (or just place your cursor in a word) and run `Cheatsheet Sidekick: Search Selection` (`Ctrl+Alt+/`, or `Cmd+Alt+/` on Mac). It fills a search box with your selection, shows the matches in a quick-pick list, and replaces the selection with whichever result you choose.
 
 ### Save a snippet back to Cheatsheet
 
-Select the code you want to keep and run `Cheats: Create Cheat from Selection` (`Ctrl+Alt+.`, or `Cmd+Alt+.` on Mac). You'll be asked for a title, a type (pick an existing one or type a new one), and whether it should be private, then your selection is saved as the cheat's body.
+Select the code you want to keep and run `Cheatsheet Sidekick: Create Cheat from Selection` (`Ctrl+Alt+.`, or `Cmd+Alt+.` on Mac). You'll be asked for a title, a type (pick an existing one or type a new one), and whether it should be private, then your selection is saved as the cheat's body.
 
 This needs a **Pro** account and a read + write API key (see [Plans and limits](#plans-and-limits)). A few limits apply to the cheat itself, matching Cheatsheet's own rules:
 

@@ -1,6 +1,6 @@
 {
   "name": "aaronscheatsheet",
-  "displayName": "Cheatsheet",
+  "displayName": "Cheatsheet Sidekick",
   "description": "Search, insert, and save snippets from Cheatsheet (cheats.aarontrotter.com) without leaving the editor.",
   "version": "0.0.4",
   "publisher": "AaronTrotter",
@@ -23,15 +23,15 @@
     "commands": [
       {
         "command": "cheats.setApiKey",
-        "title": "Cheats: Set API Key"
+        "title": "Cheatsheet Sidekick: Set API Key"
       },
       {
         "command": "cheats.searchSelection",
-        "title": "Cheats: Search Selection"
+        "title": "Cheatsheet Sidekick: Search Selection"
       },
       {
         "command": "cheats.createCheat",
-        "title": "Cheats: Create Cheat from Selection"
+        "title": "Cheatsheet Sidekick: Create Cheat from Selection"
       }
     ],
     "keybindings": [
@@ -49,7 +49,7 @@
       }
     ],
     "configuration": {
-      "title": "Cheats",
+      "title": "Cheatsheet Sidekick",
       "properties": {
         "cheats.baseUrl": {
           "type": "string",
