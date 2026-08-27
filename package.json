@@ -1,8 +1,8 @@
 {
   "name": "aaronscheatsheet",
   "displayName": "Cheatsheet Sidekick",
-  "description": "\"Built for Me, Too Good to Keep to Myself.\" Search, insert, and save Cheatsheet snippets without leaving the editor.",
-  "version": "0.0.4",
+  "description": "\"Built for Me, Too Good to Keep to Myself.\" Search, insert, and save Cheatsheet snippets and Tasks without leaving the editor.",
+  "version": "0.0.5",
   "publisher": "AaronTrotter",
   "icon": "icon.png",
   "license": "MIT",
@@ -26,17 +26,25 @@
         "title": "Cheatsheet Sidekick: Set API Key"
       },
       {
-        "command": "cheats.searchSelection",
-        "title": "Cheatsheet Sidekick: Search Selection"
+        "command": "cheats.searchCheats",
+        "title": "Cheatsheet Sidekick: Search Cheats"
       },
       {
         "command": "cheats.createCheat",
-        "title": "Cheatsheet Sidekick: Create Cheat from Selection"
+        "title": "Cheatsheet Sidekick: Create Cheat"
+      },
+      {
+        "command": "cheats.searchTasks",
+        "title": "Cheatsheet Sidekick: Search Tasks"
+      },
+      {
+        "command": "cheats.createTask",
+        "title": "Cheatsheet Sidekick: Create Task"
       }
     ],
     "keybindings": [
       {
-        "command": "cheats.searchSelection",
+        "command": "cheats.searchCheats",
         "key": "ctrl+alt+/",
         "mac": "cmd+alt+/",
         "when": "editorTextFocus"
@@ -45,7 +53,19 @@
         "command": "cheats.createCheat",
         "key": "ctrl+alt+.",
         "mac": "cmd+alt+.",
-        "when": "editorHasSelection"
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "cheats.searchTasks",
+        "key": "ctrl+alt+shift+/",
+        "mac": "cmd+alt+shift+/",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "cheats.createTask",
+        "key": "ctrl+alt+shift+.",
+        "mac": "cmd+alt+shift+.",
+        "when": "editorTextFocus"
       }
     ],
     "configuration": {

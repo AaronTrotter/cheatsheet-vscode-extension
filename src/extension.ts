@@ -1,20 +1,20 @@
 import * as vscode from "vscode";
 import {
 	ApiError,
-	BODY_MAX_LINE_LENGTH,
-	BODY_MAX_LINES,
-	MAX_RECORD_SIZE_BYTES,
 	NewCheat,
-	TITLE_MAX_LENGTH,
-	TYPE_MAX_LENGTH,
+	NewTask,
 	addCheat,
+	addTask,
 	getCheatBody,
 	searchCheats,
+	searchTasks,
 	setApiKey
 } from "./api";
+import { showCreateCheatForm, showCreateTaskForm } from "./webviewForm";
 
 const TRIGGER = /\/cheats\s+(\S.*)$/;
 const DEBOUNCE_MS = 250;
+const MIN_QUERY_LENGTH = 2;
 
 class CheatsCompletionProvider implements vscode.CompletionItemProvider {
 	private requestSeq = 0;
@@ -32,7 +32,7 @@ class CheatsCompletionProvider implements vscode.CompletionItemProvider {
 		if (!match) return undefined;
 
 		const query = match[1].trim();
-		if (query.length < 2) return new vscode.CompletionList([], true);
+		if (query.length < MIN_QUERY_LENGTH) return new vscode.CompletionList([], true);
 
 		const seq = ++this.requestSeq;
 		await new Promise(resolve => setTimeout(resolve, DEBOUNCE_MS));
@@ -96,42 +96,89 @@ class CheatsCompletionProvider implements vscode.CompletionItemProvider {
 	}
 }
 
-async function searchSelectionCommand(secrets: vscode.SecretStorage): Promise<void> {
-	const editor = vscode.window.activeTextEditor;
-	if (!editor) return;
-
+// Reused by both search commands: an explicit selection wins, otherwise falls back to the word
+// under the cursor (if any), so a bare cursor placement still gives a sensible search seed/replace
+// target instead of requiring a manual selection.
+function getSelectionOrWordRange(editor: vscode.TextEditor | undefined): vscode.Range | undefined {
+	if (!editor) return undefined;
 	const selection = editor.selection;
-	const wordRange = selection.isEmpty
-		? editor.document.getWordRangeAtPosition(selection.active)
-		: undefined;
-	const range = selection.isEmpty ? wordRange : selection;
-	const query = range ? editor.document.getText(range) : "";
+	if (!selection.isEmpty) return selection;
+	return editor.document.getWordRangeAtPosition(selection.active);
+}
 
-	const input = await vscode.window.showInputBox({
-		title: "Cheatsheet Sidekick: Search",
-		prompt: "Search your cheatsheet site",
-		value: query,
-		valueSelection: query ? [0, query.length] : undefined,
-		ignoreFocusOut: true
+// Reused by both create commands to seed the form's body from the active selection, if any.
+function getSelectedText(editor: vscode.TextEditor | undefined): string {
+	return editor && !editor.selection.isEmpty ? editor.document.getText(editor.selection) : "";
+}
+
+async function insertOrReplace(editor: vscode.TextEditor, range: vscode.Range | undefined, text: string): Promise<void> {
+	await editor.edit(editBuilder => {
+		if (range) {
+			editBuilder.replace(range, text);
+		} else {
+			editBuilder.insert(editor.selection.active, text);
+		}
 	});
-	if (!input || !input.trim()) return;
+}
 
+function showApiError(error: unknown): void {
+	const message = error instanceof ApiError ? error.message : String(error);
+	vscode.window.showErrorMessage(`Cheatsheet Sidekick: ${message}`);
+}
+
+// Shared by search and create commands: runs `action` under a cancellable progress notification,
+// swallowing the AbortError that results from the user cancelling (undefined return means
+// "cancelled, nothing more to do") while letting any other error (e.g. ApiError) propagate for the
+// caller to handle on its own terms (create commands special-case 401, search commands don't).
+async function withCancellableProgress<T>(title: string, action: (signal: AbortSignal) => Promise<T>): Promise<T | undefined> {
 	const controller = new AbortController();
-	let results;
 	try {
-		results = await vscode.window.withProgress(
-			{ location: vscode.ProgressLocation.Notification, title: "Cheatsheet Sidekick: Searching…", cancellable: true },
+		return await vscode.window.withProgress(
+			{ location: vscode.ProgressLocation.Notification, title, cancellable: true },
 			(_progress, token) => {
 				token.onCancellationRequested(() => controller.abort());
-				return searchCheats(input.trim(), secrets, controller.signal);
+				return action(controller.signal);
 			}
 		);
 	} catch (error) {
-		if (error instanceof Error && error.name === "AbortError") return;
-		const message = error instanceof ApiError ? error.message : String(error);
-		vscode.window.showErrorMessage(`Cheatsheet Sidekick: ${message}`);
+		if (error instanceof Error && error.name === "AbortError") return undefined;
+		throw error;
+	}
+}
+
+async function searchCheatsCommand(secrets: vscode.SecretStorage): Promise<void> {
+	const editor = vscode.window.activeTextEditor;
+	if (!editor) return;
+
+	const range = getSelectionOrWordRange(editor);
+
+	let query: string;
+	if (!editor.selection.isEmpty) {
+		query = editor.document.getText(editor.selection).trim();
+		if (query.length < MIN_QUERY_LENGTH) return;
+	} else {
+		const wordText = range ? editor.document.getText(range) : "";
+		const input = await vscode.window.showInputBox({
+			title: "Cheatsheet Sidekick: Search Cheats",
+			prompt: "Search your cheatsheet site",
+			value: wordText,
+			valueSelection: wordText ? [0, wordText.length] : undefined,
+			ignoreFocusOut: true,
+			validateInput: value =>
+				value.trim().length < MIN_QUERY_LENGTH ? `Enter at least ${MIN_QUERY_LENGTH} characters to search.` : undefined
+		});
+		if (!input) return;
+		query = input.trim();
+	}
+
+	let results;
+	try {
+		results = await withCancellableProgress("Cheatsheet Sidekick: Searching…", signal => searchCheats(query, secrets, signal));
+	} catch (error) {
+		showApiError(error);
 		return;
 	}
+	if (results === undefined) return;
 
 	if (results.length === 0) {
 		vscode.window.showInformationMessage("Cheatsheet Sidekick: No results found.");
@@ -151,104 +198,32 @@ async function searchSelectionCommand(secrets: vscode.SecretStorage): Promise<vo
 
 	let body: string;
 	try {
-		body = await getCheatBody(picked.result.id, secrets, controller.signal);
+		body = await getCheatBody(picked.result.id, secrets, new AbortController().signal);
 	} catch (error) {
-		const message = error instanceof ApiError ? error.message : String(error);
-		vscode.window.showErrorMessage(`Cheatsheet Sidekick: ${message}`);
+		showApiError(error);
 		return;
 	}
 
-	await editor.edit(editBuilder => {
-		if (range) {
-			editBuilder.replace(range, body);
-		} else {
-			editBuilder.insert(editor.selection.active, body);
-		}
-	});
+	await insertOrReplace(editor, range, body);
 }
 
-async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> {
-	const editor = vscode.window.activeTextEditor;
-	const body = editor && !editor.selection.isEmpty ? editor.document.getText(editor.selection) : undefined;
-	if (!body) {
-		vscode.window.showErrorMessage("Cheatsheet Sidekick: Select the code/text to save as a cheat first.");
-		return;
-	}
-
-	const lines = body.split(/\r\n|\r|\n/);
-	if (lines.length > BODY_MAX_LINES) {
-		vscode.window.showErrorMessage(`Cheatsheet Sidekick: Selection has ${lines.length} lines; cheats are limited to ${BODY_MAX_LINES}.`);
-		return;
-	}
-	const longLine = lines.find(line => line.length > BODY_MAX_LINE_LENGTH);
-	if (longLine !== undefined) {
-		vscode.window.showErrorMessage(`Cheatsheet Sidekick: A line in the selection exceeds the ${BODY_MAX_LINE_LENGTH} character limit.`);
-		return;
-	}
-
-	const title = await vscode.window.showInputBox({
-		title: "Cheatsheet Sidekick: New Cheat (1/3): Title",
-		prompt: `Required, max ${TITLE_MAX_LENGTH} characters`,
-		ignoreFocusOut: true,
-		validateInput: value => {
-			if (!value.trim()) return "Title is required.";
-			if (value.length > TITLE_MAX_LENGTH) return `Too long: ${value.length}/${TITLE_MAX_LENGTH} characters.`;
-			return undefined;
-		}
-	});
-	if (!title) return;
-
-	const typeName = await vscode.window.showInputBox({
-		title: "Cheatsheet Sidekick: New Cheat (2/3): Type",
-		prompt: `Required, max ${TYPE_MAX_LENGTH} characters, e.g. "javascript", "git", "regex". Unrecognized types are created automatically.`,
-		ignoreFocusOut: true,
-		validateInput: value => {
-			if (!value.trim()) return "Type is required.";
-			if (value.length > TYPE_MAX_LENGTH) return `Too long: ${value.length}/${TYPE_MAX_LENGTH} characters.`;
-			return undefined;
-		}
-	});
-	if (!typeName) return;
-
-	const visibility = await vscode.window.showQuickPick(
-		[
-			{ label: "Private", description: "Only visible to you", isPrivate: true },
-			{ label: "Public", description: "Visible to everyone", isPrivate: false }
-		],
-		{ title: "Cheatsheet Sidekick: New Cheat (3/3): Visibility", ignoreFocusOut: true }
-	);
-	if (!visibility) return;
-
-	const cheat: NewCheat = {
-		title: title.trim(),
-		typeName: typeName.trim(),
-		body: { text: body },
-		private: visibility.isPrivate
-	};
-
-	const recordSize = new TextEncoder().encode(JSON.stringify(cheat)).length;
-	if (recordSize > MAX_RECORD_SIZE_BYTES) {
-		vscode.window.showErrorMessage(
-			`Cheatsheet Sidekick: This cheat is ${(recordSize / 1024).toFixed(1)}KB, over the ${MAX_RECORD_SIZE_BYTES / 1024}KB limit.`
-		);
-		return;
-	}
-
-	const controller = new AbortController();
+// Shared by both create commands: runs the save under progress, then handles the three outcomes
+// they have in common (cancelled, needs-Pro 401, any other ApiError) the same way, leaving only
+// the entity-specific naming and the save call itself to the caller.
+async function saveEntityCommand(
+	secrets: vscode.SecretStorage,
+	entityName: "cheat" | "task",
+	progressTitle: string,
+	title: string,
+	save: (signal: AbortSignal) => Promise<string>
+): Promise<void> {
+	let id: string | undefined;
 	try {
-		const id = await vscode.window.withProgress(
-			{ location: vscode.ProgressLocation.Notification, title: "Cheatsheet Sidekick: Saving…", cancellable: true },
-			(_progress, token) => {
-				token.onCancellationRequested(() => controller.abort());
-				return addCheat(cheat, secrets, controller.signal);
-			}
-		);
-		vscode.window.showInformationMessage(`Cheatsheet Sidekick: Saved "${cheat.title}" (${id}).`);
+		id = await withCancellableProgress(progressTitle, save);
 	} catch (error) {
-		if (error instanceof Error && error.name === "AbortError") return;
 		if (error instanceof ApiError && error.status === 401) {
 			const choice = await vscode.window.showErrorMessage(
-				"Cheatsheet Sidekick: Creating a cheat needs a Pro account and a read + write API key. Either your key " +
+				`Cheatsheet Sidekick: Creating a ${entityName} needs a Pro account and a read + write API key. Either your key ` +
 					"doesn't have write access, is out of date, or your account isn't Pro yet.",
 				"Set API Key",
 				"Upgrade to Pro"
@@ -259,9 +234,93 @@ async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> 
 			}
 			return;
 		}
-		const message = error instanceof ApiError ? error.message : String(error);
-		vscode.window.showErrorMessage(`Cheatsheet Sidekick: ${message}`);
+		showApiError(error);
+		return;
 	}
+	if (id === undefined) return;
+	vscode.window.showInformationMessage(`Cheatsheet Sidekick: Saved ${entityName} "${title}" (${id}).`);
+}
+
+async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> {
+	const initialBody = getSelectedText(vscode.window.activeTextEditor);
+
+	const form = await showCreateCheatForm(initialBody);
+	if (!form) return;
+
+	const cheat: NewCheat = {
+		title: form.title,
+		typeName: form.typeName,
+		body: { text: form.body },
+		private: form.private
+	};
+
+	await saveEntityCommand(secrets, "cheat", "Cheatsheet Sidekick: Saving…", cheat.title, signal => addCheat(cheat, secrets, signal));
+}
+
+async function searchTasksCommand(secrets: vscode.SecretStorage): Promise<void> {
+	const editor = vscode.window.activeTextEditor;
+
+	const range = getSelectionOrWordRange(editor);
+	const query = range && editor ? editor.document.getText(range) : "";
+
+	const input = await vscode.window.showInputBox({
+		title: "Cheatsheet Sidekick: Search Tasks",
+		prompt: "Search your Tasks (leave blank to browse your most recent)",
+		value: query,
+		valueSelection: query ? [0, query.length] : undefined,
+		ignoreFocusOut: true,
+		validateInput: value => {
+			const trimmed = value.trim();
+			return trimmed.length > 0 && trimmed.length < MIN_QUERY_LENGTH
+				? `Enter at least ${MIN_QUERY_LENGTH} characters, or leave blank to browse your most recent.`
+				: undefined;
+		}
+	});
+	if (input === undefined) return;
+
+	let results;
+	try {
+		results = await withCancellableProgress("Cheatsheet Sidekick: Searching Tasks…", signal => searchTasks(input.trim(), secrets, signal));
+	} catch (error) {
+		showApiError(error);
+		return;
+	}
+	if (results === undefined) return;
+
+	if (results.length === 0) {
+		vscode.window.showInformationMessage("Cheatsheet Sidekick: No tasks found.");
+		return;
+	}
+
+	const picked = await vscode.window.showQuickPick(
+		results.map(t => ({
+			label: t.title,
+			description: t.category || undefined,
+			detail: t.text.replace(/\s+/g, " ").trim(),
+			task: t
+		})),
+		{ title: "Cheatsheet Sidekick: Select a task to insert", matchOnDescription: true, matchOnDetail: true }
+	);
+	if (!picked) return;
+
+	if (!editor) return;
+	await insertOrReplace(editor, range, picked.task.text);
+}
+
+async function createTaskCommand(secrets: vscode.SecretStorage): Promise<void> {
+	const initialBody = getSelectedText(vscode.window.activeTextEditor);
+
+	const form = await showCreateTaskForm(initialBody);
+	if (!form) return;
+
+	const task: NewTask = {
+		title: form.title,
+		category: form.category,
+		text: form.text,
+		duration: form.duration
+	};
+
+	await saveEntityCommand(secrets, "task", "Cheatsheet Sidekick: Saving Task…", task.title, signal => addTask(task, secrets, signal));
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -270,8 +329,10 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.languages.registerCompletionItemProvider({ pattern: "**" }, provider, " "),
 		vscode.commands.registerCommand("cheats.setApiKey", () => setApiKey(context.secrets)),
-		vscode.commands.registerCommand("cheats.searchSelection", () => searchSelectionCommand(context.secrets)),
-		vscode.commands.registerCommand("cheats.createCheat", () => createCheatCommand(context.secrets))
+		vscode.commands.registerCommand("cheats.searchCheats", () => searchCheatsCommand(context.secrets)),
+		vscode.commands.registerCommand("cheats.createCheat", () => createCheatCommand(context.secrets)),
+		vscode.commands.registerCommand("cheats.searchTasks", () => searchTasksCommand(context.secrets)),
+		vscode.commands.registerCommand("cheats.createTask", () => createTaskCommand(context.secrets))
 	);
 }
 

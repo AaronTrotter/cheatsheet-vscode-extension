@@ -1,14 +1,14 @@
 # Cheatsheet Sidekick
 
-Search, insert, and save snippets from [Cheatsheet](https://cheats.aarontrotter.com) without leaving VS Code.
+Search, insert, and save snippets and Tasks from [Cheatsheet](https://cheats.aarontrotter.com) without leaving VS Code.
 
-[Cheatsheet](https://cheats.aarontrotter.com) is a personal cheat-sheet web app for storing code and command snippets ("cheats"), searchable and organized by type. This extension connects to your Cheatsheet account so you can pull a snippet straight into your editor, or push a new one back up, without switching to the browser.
+[Cheatsheet](https://cheats.aarontrotter.com) is a personal cheat-sheet web app for storing code and command snippets ("cheats"), searchable and organized by type, plus a separate Tasks section for private to-do lists and notes. This extension connects to your Cheatsheet account so you can pull a snippet or task straight into your editor, or push a new one back up, without switching to the browser.
 
-**Free to search.** A free Cheatsheet account is all you need for search and insert, no card required. Creating cheats from VS Code needs a Pro plan, see [Plans and limits](#plans-and-limits) below.
+**Free to search.** A free Cheatsheet account is all you need for search and insert of both cheats and Tasks, no card required. Creating cheats or Tasks from VS Code needs a Pro plan, see [Plans and limits](#plans-and-limits) below.
 
 ## Getting started
 
-1. On [cheats.aarontrotter.com](https://cheats.aarontrotter.com), sign in (or create a free account) and go to `/user`. In the API Access section, generate an API key. Pick read-only if you just want to search, or read + write if you also want to create cheats from VS Code (Pro required for write, see below).
+1. On [cheats.aarontrotter.com](https://cheats.aarontrotter.com), sign in (or create a free account) and go to `/user`. In the API Access section, generate an API key. Pick read-only if you just want to search, or read + write if you also want to create cheats or Tasks from VS Code (Pro required for write, see below).
 2. Back in VS Code, open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run `Cheatsheet Sidekick: Set API Key`, then paste the key in. It's kept in VS Code's secure SecretStorage, never written to a settings file.
 3. You're set. Try typing `/cheats` in any file to search.
 
@@ -18,38 +18,30 @@ Search, insert, and save snippets from [Cheatsheet](https://cheats.aarontrotter.
 
 Type `/cheats` followed by your search terms anywhere in an editor, for example `/cheats react hook`. After a couple of characters, IntelliSense lists matching cheats, ranked by relevance. Accept a suggestion and it replaces what you typed with the full snippet.
 
-### Search a selection
+### Search Cheats
 
-Select some text (or just place your cursor in a word) and run `Cheatsheet Sidekick: Search Selection` (`Ctrl+Alt+/`, or `Cmd+Alt+/` on Mac). It fills a search box with your selection, shows the matches in a quick-pick list, and replaces the selection with whichever result you choose.
+Select some text and run `Cheatsheet Sidekick: Search Cheats` (`Ctrl+Alt+/`, or `Cmd+Alt+/` on Mac) to search on it right away. With no selection, it fills a search box from the word under your cursor instead so you can edit it before searching. Either way you get a quick-pick list of matches, and picking one replaces the selection (or inserts at the cursor) with the full snippet.
 
 ### Save a snippet back to Cheatsheet
 
-Select the code you want to keep and run `Cheatsheet Sidekick: Create Cheat from Selection` (`Ctrl+Alt+.`, or `Cmd+Alt+.` on Mac). You'll be asked for a title, a type (pick an existing one or type a new one), and whether it should be private, then your selection is saved as the cheat's body.
+Run `Cheatsheet Sidekick: Create Cheat` (`Ctrl+Alt+.`, or `Cmd+Alt+.` on Mac) from any editor, selection or not. It opens a form in a new tab with all the fields at once: title, type (pick an existing one or type a new one), a visibility toggle (private by default), and the body, pre-filled from your selection if you had one. Fill it in and click Save cheat.
 
-This needs a **Pro** account and a read + write API key (see [Plans and limits](#plans-and-limits)). A few limits apply to the cheat itself, matching Cheatsheet's own rules:
+### Search Tasks
 
-- Title: required, 40 characters max
-- Type: required, 15 characters max
-- Body: 100 lines max, 600 characters per line max
-- Whole cheat: 10KB max
+Select some text (or just place your cursor in a word) and run `Cheatsheet Sidekick: Search Tasks` (`Ctrl+Alt+Shift+/`, or `Cmd+Alt+Shift+/` on Mac). Leave the search box blank to browse your most recently created Tasks instead. Pick a result from the quick-pick list and its full text replaces the selection.
+
+### Save a task back to Cheatsheet
+
+Run `Cheatsheet Sidekick: Create Task` (`Ctrl+Alt+Shift+.`, or `Cmd+Alt+Shift+.` on Mac) from any editor, selection or not. It opens a form in a new tab with all the fields at once: title, an optional category (a freeform label, not shared across Tasks), an expiry (permanent, or auto-delete after an hour, a day, or a week), and the text, pre-filled from your selection if you had one. Fill it in and click Save task. Tasks are always private, unencrypted, and don't show up in cheat search.
 
 ## Plans and limits
 
-Cheatsheet has a free tier, and this extension's search and insert features work on it:
-
-| | Free | Pro (€2/month or €20/year) |
-|---|---|---|
-| Search & insert (this extension) | ✅ | ✅ |
-| Create cheats (this extension) | ❌ | ✅ |
-| API requests per day | 50 | 500 |
-
-Want to create cheats from VS Code? [Upgrade to Pro on the billing page](https://cheats.aarontrotter.com/billing). Pro also unlocks Vault (encrypted private notes) and Tasks on the site itself, alongside the higher API quota.
+This extension's usage aligns with whatever plan your Cheatsheet account is on. Search and insert work on any account for both cheats and Tasks, while creating either from VS Code needs a Pro plan (Pro also unlocks Vault on the site itself, and raises your daily API quota). See [Cheatsheet's plans](https://cheats.aarontrotter.com/billing) for the details.
 
 A couple of other things worth knowing:
 
-- Search only shows cheats you can normally see: your own private ones, plus everything public.
+- Search only shows cheats you can normally see: your own private ones, plus everything public. Tasks are always private, so task search only ever shows your own.
 - The daily API quota is shared across everything using your key, including Cheatsheet's Model Context Protocol integration if you use that too. Full API details live at [cheats.aarontrotter.com/api-docs](https://cheats.aarontrotter.com/api-docs).
-- Already have your own fork of Cheatsheet running elsewhere? Point `cheats.baseUrl` in your VS Code settings at it instead.
 
 ## Contributing
 

@@ -42,6 +42,40 @@ interface AddCheatResponse {
 	id: string;
 }
 
+export interface TaskResult {
+	id: string;
+	title: string;
+	category: string;
+	text: string;
+	highlights: string[];
+	links: string[];
+	createdDateMs: number;
+	expiresAtMs: number | null;
+}
+
+interface SearchTasksResponse {
+	tasks: TaskResult[];
+	totalPages: number;
+}
+
+// Same limits as cheats' TITLE_MAX_LENGTH/BODY_MAX_LINES/BODY_MAX_LINE_LENGTH/
+// MAX_RECORD_SIZE_BYTES above (enforced server-side by POST /mcp/addTask); category has its own
+// cap, wider than a cheat's typeName since it's freeform rather than a short taxonomy lookup.
+export const CATEGORY_MAX_LENGTH = 30;
+
+export type TaskDuration = "permanent" | "1h" | "1d" | "1w";
+
+export interface NewTask {
+	title: string;
+	category: string;
+	text: string;
+	duration: TaskDuration;
+}
+
+interface AddTaskResponse {
+	id: string;
+}
+
 export class ApiError extends Error {
 	constructor(public status: number, message: string) {
 		super(message);
@@ -117,6 +151,30 @@ export async function addCheat(
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(cheat)
+	});
+	return data.id;
+}
+
+export async function searchTasks(
+	query: string,
+	secrets: vscode.SecretStorage,
+	signal: AbortSignal
+): Promise<TaskResult[]> {
+	const params = new URLSearchParams();
+	if (query) params.set("q", query);
+	const data = await request<SearchTasksResponse>(`/mcp/searchTasks?${params}`, secrets, signal);
+	return data.tasks;
+}
+
+export async function addTask(
+	task: NewTask,
+	secrets: vscode.SecretStorage,
+	signal: AbortSignal
+): Promise<string> {
+	const data = await request<AddTaskResponse>("/mcp/addTask", secrets, signal, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(task)
 	});
 	return data.id;
 }
