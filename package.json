@@ -2,7 +2,7 @@
   "name": "aaronscheatsheet",
   "displayName": "Cheatsheet Sidekick",
   "description": "\"Built for Me, Too Good to Keep to Myself.\" Search, insert, and save Cheatsheet snippets and Tasks without leaving the editor.",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "AaronTrotter",
   "icon": "icon.png",
   "license": "MIT",

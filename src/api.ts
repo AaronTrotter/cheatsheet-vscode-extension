@@ -111,7 +111,10 @@ async function request<T>(path: string, secrets: vscode.SecretStorage, signal: A
 	}
 	const res = await fetch(`${baseUrl()}${path}`, {
 		...init,
-		headers: { Authorization: `Bearer ${apiKey}`, ...(init?.headers ?? {}) },
+		// X-Cheatsheet-Client is purely informational, read server-side for the /user page's
+		// per-client usage breakdown (see functions/dbHelpers.js's getClientId in the main repo).
+		// Safe against an older server that doesn't recognize it.
+		headers: { Authorization: `Bearer ${apiKey}`, "X-Cheatsheet-Client": "vscode-extension", ...(init?.headers ?? {}) },
 		signal
 	});
 	if (!res.ok) {
