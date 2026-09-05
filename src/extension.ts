@@ -3,9 +3,11 @@ import {
 	ApiError,
 	NewCheat,
 	NewTask,
+	TaskSection,
 	addCheat,
 	addTask,
 	getCheatBody,
+	getGuides,
 	searchCheats,
 	searchTasks,
 	setApiKey
@@ -38,8 +40,7 @@ class CheatsCompletionProvider implements vscode.CompletionItemProvider {
 		await new Promise(resolve => setTimeout(resolve, DEBOUNCE_MS));
 		if (token.isCancellationRequested || seq !== this.requestSeq) return undefined;
 
-		const controller = new AbortController();
-		token.onCancellationRequested(() => controller.abort());
+		const controller = abortControllerFor(token);
 
 		const triggerStart = prefix.length - match[0].length;
 		const range = new vscode.Range(position.line, triggerStart, position.line, position.character);
@@ -75,8 +76,7 @@ class CheatsCompletionProvider implements vscode.CompletionItemProvider {
 		const cheatId = (item as vscode.CompletionItem & { cheatId?: string }).cheatId;
 		if (!cheatId) return item;
 
-		const controller = new AbortController();
-		token.onCancellationRequested(() => controller.abort());
+		const controller = abortControllerFor(token);
 		try {
 			const fullText = await getCheatBody(cheatId, this.secrets, controller.signal);
 			item.insertText = fullText;
@@ -86,17 +86,30 @@ class CheatsCompletionProvider implements vscode.CompletionItemProvider {
 		return item;
 	}
 
+	// Same message as showApiError, but silent on cancellation and capped at one message every five
+	// seconds, because this runs on every keystroke, so an offline or misconfigured client would otherwise
+	// stack up a notification per character typed.
 	private showErrorOnce(error: unknown) {
-		if (error instanceof Error && error.name === "AbortError") return;
+		if (isAbortError(error)) return;
 		const now = Date.now();
 		if (now - this.lastErrorShownAt < 5000) return;
 		this.lastErrorShownAt = now;
-		const message = error instanceof ApiError ? error.message : String(error);
-		vscode.window.showErrorMessage(`Cheatsheet Sidekick: ${message}`);
+		showApiError(error);
 	}
 }
 
-// Reused by both search commands: an explicit selection wins, otherwise falls back to the word
+function isAbortError(error: unknown): boolean {
+	return error instanceof Error && error.name === "AbortError";
+}
+
+// Bridges a VS Code cancellation token to the AbortSignal the api module takes.
+function abortControllerFor(token: vscode.CancellationToken): AbortController {
+	const controller = new AbortController();
+	token.onCancellationRequested(() => controller.abort());
+	return controller;
+}
+
+// Reused by every search command: an explicit selection wins, otherwise falls back to the word
 // under the cursor (if any), so a bare cursor placement still gives a sensible search seed/replace
 // target instead of requiring a manual selection.
 function getSelectionOrWordRange(editor: vscode.TextEditor | undefined): vscode.Range | undefined {
@@ -106,7 +119,7 @@ function getSelectionOrWordRange(editor: vscode.TextEditor | undefined): vscode.
 	return editor.document.getWordRangeAtPosition(selection.active);
 }
 
-// Reused by both create commands to seed the form's body from the active selection, if any.
+// Reused by every create command to seed the form's body from the active selection, if any.
 function getSelectedText(editor: vscode.TextEditor | undefined): string {
 	return editor && !editor.selection.isEmpty ? editor.document.getText(editor.selection) : "";
 }
@@ -141,39 +154,65 @@ async function withCancellableProgress<T>(title: string, action: (signal: AbortS
 			}
 		);
 	} catch (error) {
-		if (error instanceof Error && error.name === "AbortError") return undefined;
+		if (isAbortError(error)) return undefined;
 		throw error;
 	}
 }
 
-async function searchCheatsCommand(secrets: vscode.SecretStorage): Promise<void> {
+interface SearchFlow<T> {
+	/** Names the section in the input box, progress and messages, e.g. "Cheats", "Tasks", "Brain". */
+	label: string;
+	prompt: string;
+	pickTitle: string;
+	emptyMessage: string;
+	/** Cheats search a non-empty selection straight off; Tasks and Brain always confirm the query. */
+	useSelectionDirectly: boolean;
+	/** Tasks and Brain accept a blank query to browse the most recent; cheat search needs one. */
+	allowBlankQuery: boolean;
+	search: (query: string, signal: AbortSignal) => Promise<T[]>;
+	toItem: (result: T) => { label: string; description?: string; detail: string };
+	/** Cheats fetch the full body lazily on pick; tasks and Brain entries already carry their text. */
+	resolveText: (result: T, signal: AbortSignal) => Promise<string>;
+}
+
+// Shared by all three search commands, which otherwise differ only in wording and in which API
+// call they make: seed a query from the selection or the word under the cursor, search under a
+// cancellable progress notification, offer the results in a quick pick, then replace the seed
+// range (or insert at the cursor) with whatever was picked.
+async function searchAndInsertCommand<T>(flow: SearchFlow<T>): Promise<void> {
 	const editor = vscode.window.activeTextEditor;
 	if (!editor) return;
 
 	const range = getSelectionOrWordRange(editor);
 
 	let query: string;
-	if (!editor.selection.isEmpty) {
+	if (flow.useSelectionDirectly && !editor.selection.isEmpty) {
 		query = editor.document.getText(editor.selection).trim();
 		if (query.length < MIN_QUERY_LENGTH) return;
 	} else {
-		const wordText = range ? editor.document.getText(range) : "";
+		const seed = range ? editor.document.getText(range) : "";
 		const input = await vscode.window.showInputBox({
-			title: "Cheatsheet Sidekick: Search Cheats",
-			prompt: "Search your cheatsheet site",
-			value: wordText,
-			valueSelection: wordText ? [0, wordText.length] : undefined,
+			title: `Cheatsheet Sidekick: Search ${flow.label}`,
+			prompt: flow.prompt,
+			value: seed,
+			valueSelection: seed ? [0, seed.length] : undefined,
 			ignoreFocusOut: true,
-			validateInput: value =>
-				value.trim().length < MIN_QUERY_LENGTH ? `Enter at least ${MIN_QUERY_LENGTH} characters to search.` : undefined
+			validateInput: value => {
+				const trimmed = value.trim();
+				if (flow.allowBlankQuery && trimmed.length === 0) return undefined;
+				if (trimmed.length >= MIN_QUERY_LENGTH) return undefined;
+				return flow.allowBlankQuery
+					? `Enter at least ${MIN_QUERY_LENGTH} characters, or leave blank to browse your most recent.`
+					: `Enter at least ${MIN_QUERY_LENGTH} characters to search.`;
+			}
 		});
-		if (!input) return;
+		if (input === undefined) return;
 		query = input.trim();
 	}
 
-	let results;
+	let results: T[] | undefined;
 	try {
-		results = await withCancellableProgress("Cheatsheet Sidekick: Searching…", signal => searchCheats(query, secrets, signal));
+		results = await withCancellableProgress(`Cheatsheet Sidekick: Searching ${flow.label}…`, signal => flow.search(query, signal));
 	} catch (error) {
 		showApiError(error);
 		return;
@@ -181,45 +220,41 @@ async function searchCheatsCommand(secrets: vscode.SecretStorage): Promise<void>
 	if (results === undefined) return;
 
 	if (results.length === 0) {
-		vscode.window.showInformationMessage("Cheatsheet Sidekick: No results found.");
+		vscode.window.showInformationMessage(flow.emptyMessage);
 		return;
 	}
 
 	const picked = await vscode.window.showQuickPick(
-		results.map(r => ({
-			label: r.title,
-			description: r.type + (r.private ? " (private)" : ""),
-			detail: r.snippet.replace(/\s+/g, " ").trim(),
-			result: r
-		})),
-		{ title: "Cheatsheet Sidekick: Select a result to insert", matchOnDescription: true, matchOnDetail: true }
+		results.map(result => ({ ...flow.toItem(result), result })),
+		{ title: flow.pickTitle, matchOnDescription: true, matchOnDetail: true }
 	);
 	if (!picked) return;
 
-	let body: string;
+	let text: string;
 	try {
-		body = await getCheatBody(picked.result.id, secrets, new AbortController().signal);
+		text = await flow.resolveText(picked.result, new AbortController().signal);
 	} catch (error) {
 		showApiError(error);
 		return;
 	}
 
-	await insertOrReplace(editor, range, body);
+	await insertOrReplace(editor, range, text);
 }
 
-// Shared by both create commands: runs the save under progress, then handles the three outcomes
-// they have in common (cancelled, needs-Pro 401, any other ApiError) the same way, leaving only
-// the entity-specific naming and the save call itself to the caller.
+type EntityName = "cheat" | "task" | "brain entry";
+
+// Shared by all three create commands: runs the save under progress, then handles the three
+// outcomes they have in common (cancelled, needs-Pro 401, any other ApiError) the same way,
+// leaving only the entity-specific naming and the save call itself to the caller.
 async function saveEntityCommand(
 	secrets: vscode.SecretStorage,
-	entityName: "cheat" | "task",
-	progressTitle: string,
+	entityName: EntityName,
 	title: string,
 	save: (signal: AbortSignal) => Promise<string>
 ): Promise<void> {
 	let id: string | undefined;
 	try {
-		id = await withCancellableProgress(progressTitle, save);
+		id = await withCancellableProgress(`Cheatsheet Sidekick: Saving ${entityName}…`, save);
 	} catch (error) {
 		if (error instanceof ApiError && error.status === 401) {
 			const choice = await vscode.window.showErrorMessage(
@@ -241,6 +276,24 @@ async function saveEntityCommand(
 	vscode.window.showInformationMessage(`Cheatsheet Sidekick: Saved ${entityName} "${title}" (${id}).`);
 }
 
+function searchCheatsCommand(secrets: vscode.SecretStorage): Promise<void> {
+	return searchAndInsertCommand({
+		label: "Cheats",
+		prompt: "Search your cheatsheet site",
+		pickTitle: "Cheatsheet Sidekick: Select a result to insert",
+		emptyMessage: "Cheatsheet Sidekick: No results found.",
+		useSelectionDirectly: true,
+		allowBlankQuery: false,
+		search: (query, signal) => searchCheats(query, secrets, signal),
+		toItem: r => ({
+			label: r.title,
+			description: r.type + (r.private ? " (private)" : ""),
+			detail: r.snippet.replace(/\s+/g, " ").trim()
+		}),
+		resolveText: (r, signal) => getCheatBody(r.id, secrets, signal)
+	});
+}
+
 async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> {
 	const initialBody = getSelectedText(vscode.window.activeTextEditor);
 
@@ -254,63 +307,40 @@ async function createCheatCommand(secrets: vscode.SecretStorage): Promise<void> 
 		private: form.private
 	};
 
-	await saveEntityCommand(secrets, "cheat", "Cheatsheet Sidekick: Saving…", cheat.title, signal => addCheat(cheat, secrets, signal));
+	await saveEntityCommand(secrets, "cheat", cheat.title, signal => addCheat(cheat, secrets, signal));
 }
 
-async function searchTasksCommand(secrets: vscode.SecretStorage): Promise<void> {
-	const editor = vscode.window.activeTextEditor;
+// Tasks and Brain are separate sections of the site sharing one backing collection, split by
+// category (SECTION_CATEGORIES in ./api). The extension keeps them separate too: each gets its own
+// pair of commands, and every request names its section so a Tasks search never turns up the
+// user's brief/rules/memory entries, or the reverse.
+const SECTION_LABELS: Record<TaskSection, string> = { tasks: "Tasks", brain: "Brain" };
+const SECTION_ENTITY_NAMES: Record<TaskSection, EntityName> = { tasks: "task", brain: "brain entry" };
+const SECTION_PICK_NOUNS: Record<TaskSection, string> = { tasks: "a task", brain: "an entry" };
 
-	const range = getSelectionOrWordRange(editor);
-	const query = range && editor ? editor.document.getText(range) : "";
-
-	const input = await vscode.window.showInputBox({
-		title: "Cheatsheet Sidekick: Search Tasks",
-		prompt: "Search your Tasks (leave blank to browse your most recent)",
-		value: query,
-		valueSelection: query ? [0, query.length] : undefined,
-		ignoreFocusOut: true,
-		validateInput: value => {
-			const trimmed = value.trim();
-			return trimmed.length > 0 && trimmed.length < MIN_QUERY_LENGTH
-				? `Enter at least ${MIN_QUERY_LENGTH} characters, or leave blank to browse your most recent.`
-				: undefined;
-		}
-	});
-	if (input === undefined) return;
-
-	let results;
-	try {
-		results = await withCancellableProgress("Cheatsheet Sidekick: Searching Tasks…", signal => searchTasks(input.trim(), secrets, signal));
-	} catch (error) {
-		showApiError(error);
-		return;
-	}
-	if (results === undefined) return;
-
-	if (results.length === 0) {
-		vscode.window.showInformationMessage("Cheatsheet Sidekick: No tasks found.");
-		return;
-	}
-
-	const picked = await vscode.window.showQuickPick(
-		results.map(t => ({
+function searchSectionCommand(secrets: vscode.SecretStorage, section: TaskSection): Promise<void> {
+	const label = SECTION_LABELS[section];
+	return searchAndInsertCommand({
+		label,
+		prompt: `Search your ${label} (leave blank to browse your most recent)`,
+		pickTitle: `Cheatsheet Sidekick: Select ${SECTION_PICK_NOUNS[section]} to insert`,
+		emptyMessage: `Cheatsheet Sidekick: No ${label} entries found.`,
+		useSelectionDirectly: false,
+		allowBlankQuery: true,
+		search: (query, signal) => searchTasks(query, section, secrets, signal),
+		toItem: t => ({
 			label: t.title,
 			description: t.category || undefined,
-			detail: t.text.replace(/\s+/g, " ").trim(),
-			task: t
-		})),
-		{ title: "Cheatsheet Sidekick: Select a task to insert", matchOnDescription: true, matchOnDetail: true }
-	);
-	if (!picked) return;
-
-	if (!editor) return;
-	await insertOrReplace(editor, range, picked.task.text);
+			detail: t.text.replace(/\s+/g, " ").trim()
+		}),
+		resolveText: async t => t.text
+	});
 }
 
-async function createTaskCommand(secrets: vscode.SecretStorage): Promise<void> {
+async function createSectionCommand(secrets: vscode.SecretStorage, section: TaskSection): Promise<void> {
 	const initialBody = getSelectedText(vscode.window.activeTextEditor);
 
-	const form = await showCreateTaskForm(initialBody);
+	const form = await showCreateTaskForm(initialBody, section);
 	if (!form) return;
 
 	const task: NewTask = {
@@ -320,7 +350,35 @@ async function createTaskCommand(secrets: vscode.SecretStorage): Promise<void> {
 		duration: form.duration
 	};
 
-	await saveEntityCommand(secrets, "task", "Cheatsheet Sidekick: Saving Task…", task.title, signal => addTask(task, secrets, signal));
+	await saveEntityCommand(secrets, SECTION_ENTITY_NAMES[section], task.title, signal => addTask(task, secrets, signal));
+}
+
+// The user's own brief and rules, pre-formatted as markdown by the server (buildGuidesText in the
+// site's functions/routes/db/mcp.js). This is the same text the site hands an MCP client on connect, which
+// makes it the thing to drop into a CLAUDE.md or AGENTS.md.
+async function insertGuidesCommand(secrets: vscode.SecretStorage): Promise<void> {
+	const editor = vscode.window.activeTextEditor;
+	if (!editor) return;
+
+	let guides: string | undefined;
+	try {
+		guides = await withCancellableProgress("Cheatsheet Sidekick: Fetching Guides…", signal => getGuides(secrets, signal));
+	} catch (error) {
+		showApiError(error);
+		return;
+	}
+	if (guides === undefined) return;
+
+	// The endpoint answers with an empty string rather than an error when there's nothing to send,
+	// which would otherwise look like the command silently doing nothing.
+	if (!guides.trim()) {
+		vscode.window.showInformationMessage(
+			"Cheatsheet Sidekick: No guides yet. Add a Brief or Rules entry to your Brain first."
+		);
+		return;
+	}
+
+	await insertOrReplace(editor, undefined, guides);
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -331,8 +389,11 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand("cheats.setApiKey", () => setApiKey(context.secrets)),
 		vscode.commands.registerCommand("cheats.searchCheats", () => searchCheatsCommand(context.secrets)),
 		vscode.commands.registerCommand("cheats.createCheat", () => createCheatCommand(context.secrets)),
-		vscode.commands.registerCommand("cheats.searchTasks", () => searchTasksCommand(context.secrets)),
-		vscode.commands.registerCommand("cheats.createTask", () => createTaskCommand(context.secrets))
+		vscode.commands.registerCommand("cheats.searchTasks", () => searchSectionCommand(context.secrets, "tasks")),
+		vscode.commands.registerCommand("cheats.createTask", () => createSectionCommand(context.secrets, "tasks")),
+		vscode.commands.registerCommand("cheats.searchBrain", () => searchSectionCommand(context.secrets, "brain")),
+		vscode.commands.registerCommand("cheats.createBrain", () => createSectionCommand(context.secrets, "brain")),
+		vscode.commands.registerCommand("cheats.insertGuides", () => insertGuidesCommand(context.secrets))
 	);
 }
 

@@ -1,8 +1,8 @@
 {
   "name": "aaronscheatsheet",
   "displayName": "Cheatsheet Sidekick",
-  "description": "\"Built for Me, Too Good to Keep to Myself.\" Search, insert, and save Cheatsheet snippets and Tasks without leaving the editor.",
-  "version": "0.0.6",
+  "description": "\"Built for Me, Too Good to Keep to Myself.\" Search, insert, and save Cheatsheet snippets, Tasks, and Brain entries without leaving the editor.",
+  "version": "0.0.7",
   "publisher": "AaronTrotter",
   "icon": "icon.png",
   "license": "MIT",
@@ -17,7 +17,7 @@
     "vscode": "^1.85.0"
   },
   "categories": ["Snippets", "Other"],
-  "activationEvents": [],
+  "activationEvents": ["onStartupFinished"],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -40,6 +40,18 @@
       {
         "command": "cheats.createTask",
         "title": "Cheatsheet Sidekick: Create Task"
+      },
+      {
+        "command": "cheats.searchBrain",
+        "title": "Cheatsheet Sidekick: Search Brain"
+      },
+      {
+        "command": "cheats.createBrain",
+        "title": "Cheatsheet Sidekick: Create Brain Entry"
+      },
+      {
+        "command": "cheats.insertGuides",
+        "title": "Cheatsheet Sidekick: Insert Guides (Brief + Rules)"
       }
     ],
     "keybindings": [

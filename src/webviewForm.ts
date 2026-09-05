@@ -2,10 +2,12 @@ import * as vscode from "vscode";
 import {
 	BODY_MAX_LINE_LENGTH,
 	BODY_MAX_LINES,
-	CATEGORY_MAX_LENGTH,
 	MAX_RECORD_SIZE_BYTES,
-	TITLE_MAX_LENGTH,
+	SECTION_CATEGORIES,
+	TaskCategory,
 	TaskDuration,
+	TaskSection,
+	TITLE_MAX_LENGTH,
 	TYPE_MAX_LENGTH
 } from "./api";
 
@@ -18,7 +20,7 @@ export interface CheatFormResult {
 
 export interface TaskFormResult {
 	title: string;
-	category: string;
+	category: TaskCategory;
 	duration: TaskDuration;
 	text: string;
 }
@@ -76,7 +78,7 @@ const SHARED_STYLE = `
 	button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground)); }
 `;
 
-// Shared by both forms: the content field is identical between them (same id, same gutter
+// Shared by every form: the content field is identical between them (same id, same gutter
 // markup), only the surrounding fields differ.
 const BODY_FIELD_HTML = `
 <div class="field">
@@ -88,7 +90,7 @@ const BODY_FIELD_HTML = `
 	<div class="hint" id="bodyHint"></div>
 </div>`;
 
-// Shared by both forms: renders 1..N into the gutter next to #body and keeps it in sync as the
+// Shared by every form: renders 1..N into the gutter next to #body and keeps it in sync as the
 // user types or scrolls. An IIFE so its locals don't collide with each form's own script scope.
 const LINE_NUMBERS_SCRIPT = `
 	(function() {
@@ -105,6 +107,96 @@ const LINE_NUMBERS_SCRIPT = `
 		updateLineNumbers();
 	})();
 `;
+
+// A .toggle-btn whose click cycles through a fixed set of values, the interaction the site's own
+// editors use for these fields (renderTaskEditor in public/js/tasks.js) rather than a dropdown or
+// a text input. Shared by all three of them: a cheat's visibility (a two-value case), and a task's
+// category and expiry. `titles` is optional, pass it only when the tooltip should change with the
+// value, otherwise the button keeps whatever static title its markup declares.
+function cyclingToggleScript(
+	stateVar: string,
+	buttonId: string,
+	keys: readonly string[],
+	labels: Record<string, string>,
+	titles?: Record<string, string>
+): string {
+	const render = `render${stateVar[0].toUpperCase()}${stateVar.slice(1)}`;
+	return `
+		let ${stateVar} = ${JSON.stringify(keys[0])};
+		const ${stateVar}Keys = ${JSON.stringify(keys)};
+		const ${stateVar}Labels = ${JSON.stringify(labels)};
+		const ${stateVar}Btn = document.getElementById(${JSON.stringify(buttonId)});
+		function ${render}() {
+			${stateVar}Btn.textContent = ${stateVar}Labels[${stateVar}];
+			${titles ? `${stateVar}Btn.title = ${JSON.stringify(titles)}[${stateVar}];` : ""}
+		}
+		${render}();
+		${stateVar}Btn.addEventListener("click", () => {
+			${stateVar} = ${stateVar}Keys[(${stateVar}Keys.indexOf(${stateVar}) + 1) % ${stateVar}Keys.length];
+			${render}();
+			validate();
+		});
+	`;
+}
+
+// The one free-text field a form has besides its title. Cheats have one (typeName, a freeform
+// taxonomy lookup); the task and Brain forms don't, since their category is a closed enum served
+// by a pill and so can never be invalid.
+interface TextField {
+	/** Element variable, declared in the caller's prelude. */
+	elementVar: string;
+	/** Variable the trimmed value binds to, for `recordExpr` to reference. */
+	valueVar: string;
+	hintId: string;
+	/** Max-length constant, declared in the caller's prelude. */
+	maxVar: string;
+	required: boolean;
+}
+
+// Shared by every form: the body checks (line count, per-line length, total record size against
+// the server's own caps), the character-count hints, and the save-button wiring are identical
+// across them. Only the payload being built and the optional second text field differ.
+function validationScript(recordExpr: string, textField?: TextField): string {
+	const secondField = textField
+		? {
+			declare: `const ${textField.valueVar} = ${textField.elementVar}.value.trim();`,
+			hint: `document.getElementById("${textField.hintId}").textContent = ${textField.valueVar}.length + "/" + ${textField.maxVar} + " characters";`,
+			ok: `&& ${textField.required ? `${textField.valueVar} && ` : ""}${textField.valueVar}.length <= ${textField.maxVar}`,
+			listener: `${textField.elementVar}, `
+		}
+		: { declare: "", hint: "", ok: "", listener: "" };
+
+	return `
+		function validate() {
+			const title = titleEl.value.trim();
+			${secondField.declare}
+			const lines = bodyEl.value.split(/\\r\\n|\\r|\\n/);
+			const longLine = lines.find(l => l.length > BODY_MAX_LINE_LENGTH);
+			const record = ${recordExpr};
+			const size = new TextEncoder().encode(JSON.stringify(record)).length;
+
+			document.getElementById("titleHint").textContent = title.length + "/" + TITLE_MAX + " characters";
+			${secondField.hint}
+			const bodyHint = document.getElementById("bodyHint");
+			bodyHint.textContent = lines.length + "/" + BODY_MAX_LINES + " lines, " + (size / 1024).toFixed(1) + "KB/" + (MAX_RECORD_BYTES / 1024) + "KB";
+			const bodyInvalid = lines.length > BODY_MAX_LINES || longLine !== undefined || size > MAX_RECORD_BYTES;
+			bodyHint.classList.toggle("error", bodyInvalid);
+
+			const ok = title && title.length <= TITLE_MAX ${secondField.ok}
+				&& bodyEl.value.trim() && !bodyInvalid;
+			saveBtn.disabled = !ok;
+			return ok ? record : null;
+		}
+
+		[titleEl, ${secondField.listener}bodyEl].forEach(el => el.addEventListener("input", validate));
+		validate();
+
+		saveBtn.addEventListener("click", () => {
+			const record = validate();
+			if (record) vscode.postMessage({ command: "submit", ...record });
+		});
+	`;
+}
 
 function panelHtml(nonceValue: string, title: string, fieldsHtml: string, saveLabel: string, scriptBody: string): string {
 	return `<!DOCTYPE html>
@@ -130,9 +222,9 @@ ${fieldsHtml}
 </html>`;
 }
 
-// Shared by both forms: creates the panel, renders its HTML, and wires up the submit/cancel
-// message protocol they both speak. Only the fields/validation script (form-specific, since the
-// two forms have different fields) and the submit-message shape (typed per form) vary by caller.
+// Shared by every form: creates the panel, renders its HTML, and wires up the submit/cancel
+// message protocol they all speak. Only the fields/validation script (form-specific, since the
+// forms have different fields) and the submit-message shape (typed per form) vary by caller.
 function openFormPanel<T>(
 	viewType: string,
 	title: string,
@@ -177,6 +269,17 @@ export function showCreateCheatForm(initialBody: string): Promise<CheatFormResul
 	</div>
 </div>${BODY_FIELD_HTML}`;
 
+	// Defaults to private (the first key), unlike the site's own new-cheat form, which defaults to
+	// public. A snippet saved straight out of an editor is less likely to be something meant to
+	// publish immediately.
+	const visibility = cyclingToggleScript(
+		"visibility",
+		"visibilityToggle",
+		["private", "public"],
+		{ private: "Private", public: "Public" },
+		{ private: "Click to make public", public: "Click to make private" }
+	);
+
 	const script = `
 		const TITLE_MAX = ${TITLE_MAX_LENGTH};
 		const TYPE_MAX = ${TYPE_MAX_LENGTH};
@@ -190,52 +293,14 @@ export function showCreateCheatForm(initialBody: string): Promise<CheatFormResul
 		const saveBtn = document.getElementById("saveBtn");
 
 		bodyEl.value = ${jsStringLiteral(initialBody)};
-
-		// Defaults to private, unlike the site's own new-cheat form (which defaults to public) —
-		// a private-by-default snippet saved from an editor is less likely to be something meant
-		// to publish immediately.
-		let isPrivate = true;
-		const visibilityBtn = document.getElementById("visibilityToggle");
-		function renderVisibility() {
-			visibilityBtn.textContent = isPrivate ? "Private" : "Public";
-			visibilityBtn.title = isPrivate ? "Click to make public" : "Click to make private";
-		}
-		renderVisibility();
-		visibilityBtn.addEventListener("click", () => {
-			isPrivate = !isPrivate;
-			renderVisibility();
-			validate();
-		});
-
-		function validate() {
-			const title = titleEl.value.trim();
-			const typeName = typeEl.value.trim();
-			const lines = bodyEl.value.split(/\\r\\n|\\r|\\n/);
-			const longLine = lines.find(l => l.length > BODY_MAX_LINE_LENGTH);
-			const record = { title, typeName, body: { text: bodyEl.value }, private: isPrivate };
-			const size = new TextEncoder().encode(JSON.stringify(record)).length;
-
-			document.getElementById("titleHint").textContent = title.length + "/" + TITLE_MAX + " characters";
-			document.getElementById("typeHint").textContent = typeName.length + "/" + TYPE_MAX + " characters";
-			const bodyHint = document.getElementById("bodyHint");
-			bodyHint.textContent = lines.length + "/" + BODY_MAX_LINES + " lines, " + (size / 1024).toFixed(1) + "KB/" + (MAX_RECORD_BYTES / 1024) + "KB";
-			const bodyInvalid = lines.length > BODY_MAX_LINES || longLine !== undefined || size > MAX_RECORD_BYTES;
-			bodyHint.classList.toggle("error", bodyInvalid);
-
-			const ok = title && title.length <= TITLE_MAX && typeName && typeName.length <= TYPE_MAX
-				&& bodyEl.value.trim() && !bodyInvalid;
-			saveBtn.disabled = !ok;
-			return ok ? record : null;
-		}
-
-		[titleEl, typeEl, bodyEl].forEach(el => el.addEventListener("input", validate));
-		validate();
-
-		saveBtn.addEventListener("click", () => {
-			const record = validate();
-			if (record) vscode.postMessage({ command: "submit", ...record });
-		});
-
+		${visibility}
+		${validationScript('{ title, typeName, body: { text: bodyEl.value }, private: visibility === "private" }', {
+			elementVar: "typeEl",
+			valueVar: "typeName",
+			hintId: "typeHint",
+			maxVar: "TYPE_MAX",
+			required: true
+		})}
 		${LINE_NUMBERS_SCRIPT}
 	`;
 
@@ -247,7 +312,24 @@ export function showCreateCheatForm(initialBody: string): Promise<CheatFormResul
 	}));
 }
 
-export function showCreateTaskForm(initialBody: string): Promise<TaskFormResult | undefined> {
+const CATEGORY_LABELS: Record<TaskCategory, string> = {
+	note: "Note",
+	list: "List",
+	brief: "Brief",
+	rules: "Rules",
+	memory: "Memory"
+};
+
+const SECTION_TITLES: Record<TaskSection, string> = { tasks: "New Task", brain: "New Brain Entry" };
+const SECTION_VIEW_TYPES: Record<TaskSection, string> = { tasks: "cheatsCreateTask", brain: "cheatsCreateBrain" };
+const SECTION_SAVE_LABELS: Record<TaskSection, string> = { tasks: "Save task", brain: "Save entry" };
+
+// Serves both the Tasks and the Brain form. The two sections differ only in which categories they
+// accept (SECTION_CATEGORIES) and what the panel calls itself, so one form covers both rather than
+// a near-identical copy each. Category is a pill, not a text field: the server takes a closed enum
+// (resolveCategory in the site's functions/routes/db/tasks.js) and 400s anything else, so cycling
+// it makes an invalid value unreachable instead of merely rejected after a round trip.
+export function showCreateTaskForm(initialBody: string, section: TaskSection): Promise<TaskFormResult | undefined> {
 	const fields = `
 <div class="field">
 	<label for="title">Title</label>
@@ -256,9 +338,8 @@ export function showCreateTaskForm(initialBody: string): Promise<TaskFormResult 
 </div>
 <div class="row">
 	<div class="field">
-		<label for="category">Category</label>
-		<input type="text" id="category" class="uppercase-field" maxlength="${CATEGORY_MAX_LENGTH}" placeholder="e.g. AI, or a project name (optional)" />
-		<div class="hint" id="categoryHint"></div>
+		<label for="categoryToggle">Category</label>
+		<button type="button" id="categoryToggle" class="toggle-btn" title="Click to change category"></button>
 	</div>
 	<div class="field">
 		<label for="durationToggle">Expiry</label>
@@ -266,72 +347,42 @@ export function showCreateTaskForm(initialBody: string): Promise<TaskFormResult 
 	</div>
 </div>${BODY_FIELD_HTML}`;
 
+	const category = cyclingToggleScript("category", "categoryToggle", SECTION_CATEGORIES[section], CATEGORY_LABELS);
+	const duration = cyclingToggleScript("duration", "durationToggle", ["permanent", "1h", "1d", "1w"], {
+		permanent: "Permanent",
+		"1h": "1 hour",
+		"1d": "1 day",
+		"1w": "1 week"
+	});
+
 	const script = `
 		const TITLE_MAX = ${TITLE_MAX_LENGTH};
-		const CATEGORY_MAX = ${CATEGORY_MAX_LENGTH};
 		const BODY_MAX_LINES = ${BODY_MAX_LINES};
 		const BODY_MAX_LINE_LENGTH = ${BODY_MAX_LINE_LENGTH};
 		const MAX_RECORD_BYTES = ${MAX_RECORD_SIZE_BYTES};
 
 		const titleEl = document.getElementById("title");
-		const categoryEl = document.getElementById("category");
 		const bodyEl = document.getElementById("body");
 		const saveBtn = document.getElementById("saveBtn");
 
 		bodyEl.value = ${jsStringLiteral(initialBody)};
-
-		// Same cycling-label interaction as the site's own task editor (renderTaskEditor in
-		// public/js/tasks.js): click steps through the fixed set of durations in order.
-		const DURATION_KEYS = ["permanent", "1h", "1d", "1w"];
-		const DURATION_LABELS = { permanent: "Permanent", "1h": "1 hour", "1d": "1 day", "1w": "1 week" };
-		let duration = "permanent";
-		const durationBtn = document.getElementById("durationToggle");
-		function renderDuration() {
-			durationBtn.textContent = DURATION_LABELS[duration];
-		}
-		renderDuration();
-		durationBtn.addEventListener("click", () => {
-			duration = DURATION_KEYS[(DURATION_KEYS.indexOf(duration) + 1) % DURATION_KEYS.length];
-			renderDuration();
-			validate();
-		});
-
-		function validate() {
-			const title = titleEl.value.trim();
-			const category = categoryEl.value.trim();
-			const lines = bodyEl.value.split(/\\r\\n|\\r|\\n/);
-			const longLine = lines.find(l => l.length > BODY_MAX_LINE_LENGTH);
-			const record = { title, category, text: bodyEl.value, duration };
-			const size = new TextEncoder().encode(JSON.stringify(record)).length;
-
-			document.getElementById("titleHint").textContent = title.length + "/" + TITLE_MAX + " characters";
-			document.getElementById("categoryHint").textContent = category.length + "/" + CATEGORY_MAX + " characters";
-			const bodyHint = document.getElementById("bodyHint");
-			bodyHint.textContent = lines.length + "/" + BODY_MAX_LINES + " lines, " + (size / 1024).toFixed(1) + "KB/" + (MAX_RECORD_BYTES / 1024) + "KB";
-			const bodyInvalid = lines.length > BODY_MAX_LINES || longLine !== undefined || size > MAX_RECORD_BYTES;
-			bodyHint.classList.toggle("error", bodyInvalid);
-
-			const ok = title && title.length <= TITLE_MAX && category.length <= CATEGORY_MAX
-				&& bodyEl.value.trim() && !bodyInvalid;
-			saveBtn.disabled = !ok;
-			return ok ? record : null;
-		}
-
-		[titleEl, categoryEl, bodyEl].forEach(el => el.addEventListener("input", validate));
-		validate();
-
-		saveBtn.addEventListener("click", () => {
-			const record = validate();
-			if (record) vscode.postMessage({ command: "submit", ...record });
-		});
-
+		${category}
+		${duration}
+		${validationScript("{ title, category, text: bodyEl.value, duration }")}
 		${LINE_NUMBERS_SCRIPT}
 	`;
 
-	return openFormPanel("cheatsCreateTask", "New Task", fields, "Save task", script, message => ({
-		title: message.title as string,
-		category: message.category as string,
-		text: message.text as string,
-		duration: message.duration as TaskDuration
-	}));
+	return openFormPanel(
+		SECTION_VIEW_TYPES[section],
+		SECTION_TITLES[section],
+		fields,
+		SECTION_SAVE_LABELS[section],
+		script,
+		message => ({
+			title: message.title as string,
+			category: message.category as TaskCategory,
+			text: message.text as string,
+			duration: message.duration as TaskDuration
+		})
+	);
 }

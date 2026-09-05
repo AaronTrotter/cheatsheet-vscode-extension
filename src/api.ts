@@ -38,7 +38,8 @@ export interface NewCheat {
 	private: boolean;
 }
 
-interface AddCheatResponse {
+// Both POST /mcp/addCheat and POST /mcp/addTask answer with just the new record's id.
+interface AddResponse {
 	id: string;
 }
 
@@ -58,22 +59,31 @@ interface SearchTasksResponse {
 	totalPages: number;
 }
 
-// Same limits as cheats' TITLE_MAX_LENGTH/BODY_MAX_LINES/BODY_MAX_LINE_LENGTH/
-// MAX_RECORD_SIZE_BYTES above (enforced server-side by POST /mcp/addTask); category has its own
-// cap, wider than a cheat's typeName since it's freeform rather than a short taxonomy lookup.
-export const CATEGORY_MAX_LENGTH = 30;
+interface GuidesResponse {
+	guides: string;
+}
+
+// Tasks and Brain are two separate sections of the site backed by one collection, split only by
+// category: /tasks holds the user's own notes and checklists, /brain holds the AI-facing entries
+// (`brief` and `rules` are the user's standing guidance, `memory` is what an assistant records for
+// itself). Mirrors TASK_SECTIONS in the site's functions/routes/db/tasks.js. Category is a closed
+// enum server-side, so it's a cycling pill in the create forms rather than a text field, an
+// unrecognised value is a 400, not a new freeform label the way a cheat's typeName is.
+export type TaskSection = "tasks" | "brain";
+export type TaskCategory = "note" | "list" | "brief" | "rules" | "memory";
+
+export const SECTION_CATEGORIES: Record<TaskSection, readonly TaskCategory[]> = {
+	tasks: ["note", "list"],
+	brain: ["brief", "rules", "memory"]
+};
 
 export type TaskDuration = "permanent" | "1h" | "1d" | "1w";
 
 export interface NewTask {
 	title: string;
-	category: string;
+	category: TaskCategory;
 	text: string;
 	duration: TaskDuration;
-}
-
-interface AddTaskResponse {
-	id: string;
 }
 
 export class ApiError extends Error {
@@ -124,6 +134,17 @@ async function request<T>(path: string, secrets: vscode.SecretStorage, signal: A
 	return res.json() as Promise<T>;
 }
 
+// Shared by both create calls: same method, same content type, same { id } response, so only the
+// path and payload differ.
+async function post(path: string, payload: unknown, secrets: vscode.SecretStorage, signal: AbortSignal): Promise<string> {
+	const data = await request<AddResponse>(path, secrets, signal, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload)
+	});
+	return data.id;
+}
+
 export async function searchCheats(
 	query: string,
 	secrets: vscode.SecretStorage,
@@ -150,20 +171,18 @@ export async function addCheat(
 	secrets: vscode.SecretStorage,
 	signal: AbortSignal
 ): Promise<string> {
-	const data = await request<AddCheatResponse>("/mcp/addCheat", secrets, signal, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(cheat)
-	});
-	return data.id;
+	return post("/mcp/addCheat", cheat, secrets, signal);
 }
 
+// `section` is what keeps Tasks and Brain apart: omitting it searches across both, which would let
+// a Tasks search turn up the user's brief/rules/memory entries.
 export async function searchTasks(
 	query: string,
+	section: TaskSection,
 	secrets: vscode.SecretStorage,
 	signal: AbortSignal
 ): Promise<TaskResult[]> {
-	const params = new URLSearchParams();
+	const params = new URLSearchParams({ section });
 	if (query) params.set("q", query);
 	const data = await request<SearchTasksResponse>(`/mcp/searchTasks?${params}`, secrets, signal);
 	return data.tasks;
@@ -174,10 +193,13 @@ export async function addTask(
 	secrets: vscode.SecretStorage,
 	signal: AbortSignal
 ): Promise<string> {
-	const data = await request<AddTaskResponse>("/mcp/addTask", secrets, signal, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(task)
-	});
-	return data.id;
+	return post("/mcp/addTask", task, secrets, signal);
+}
+
+// The user's own standing guidance (their Brain's `brief` and `rules` entries, `memory` excluded)
+// pre-formatted server-side as markdown. This is the same text the site hands an MCP client on connect.
+// Returns "" when they have no such entries yet.
+export async function getGuides(secrets: vscode.SecretStorage, signal: AbortSignal): Promise<string> {
+	const data = await request<GuidesResponse>("/mcp/getGuides", secrets, signal);
+	return data.guides;
 }

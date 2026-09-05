@@ -1,8 +1,8 @@
 # Cheatsheet Sidekick
 
-Search, insert, and save snippets and Tasks from [Cheatsheet](https://cheats.aarontrotter.com) without leaving VS Code.
+Search, insert, and save snippets, Tasks, and Brain entries from [Cheatsheet](https://cheats.aarontrotter.com) without leaving VS Code.
 
-[Cheatsheet](https://cheats.aarontrotter.com) is a personal cheat-sheet web app for storing code and command snippets ("cheats"), searchable and organized by type, plus a separate Tasks section for private to-do lists and notes. This extension connects to your Cheatsheet account so you can pull a snippet or task straight into your editor, or push a new one back up, without switching to the browser.
+[Cheatsheet](https://cheats.aarontrotter.com) is a personal cheat-sheet web app for storing code and command snippets ("cheats"), searchable and organized by type, plus a separate Tasks section for private to-do lists and notes, and a Brain section holding the context, rules, and memories you want an AI assistant to work from. This extension connects to your Cheatsheet account so you can pull a snippet, task, or brain entry straight into your editor, or push a new one back up, without switching to the browser.
 
 **Free to search.** A free Cheatsheet account is all you need for search and insert of both cheats and Tasks, no card required. Creating cheats or Tasks from VS Code needs a Pro plan, see [Plans and limits](#plans-and-limits) below.
 
@@ -32,11 +32,19 @@ Select some text (or just place your cursor in a word) and run `Cheatsheet Sidek
 
 ### Save a task back to Cheatsheet
 
-Run `Cheatsheet Sidekick: Create Task` (`Ctrl+Alt+Shift+.`, or `Cmd+Alt+Shift+.` on Mac) from any editor, selection or not. It opens a form in a new tab with all the fields at once: title, an optional category (a freeform label, not shared across Tasks), an expiry (permanent, or auto-delete after an hour, a day, or a week), and the text, pre-filled from your selection if you had one. Fill it in and click Save task. Tasks are always private, unencrypted, and don't show up in cheat search.
+Run `Cheatsheet Sidekick: Create Task` (`Ctrl+Alt+Shift+.`, or `Cmd+Alt+Shift+.` on Mac) from any editor, selection or not. It opens a form in a new tab with all the fields at once: title, a category (a pill you click to cycle between Note and List), an expiry (permanent, or auto-delete after an hour, a day, or a week), and the text, pre-filled from your selection if you had one. Fill it in and click Save task. Tasks are always private, unencrypted, and don't show up in cheat search.
+
+### Work with your Brain
+
+Brain is the AI-facing side of the same section: briefs are context you want an assistant to have, rules are constraints it should follow, and memories are what it records for itself. Three Command Palette commands cover it (no default keybindings, to avoid colliding with the chords above):
+
+- `Cheatsheet Sidekick: Search Brain` searches those entries the same way Search Tasks does.
+- `Cheatsheet Sidekick: Create Brain Entry` opens the same form with the category pill cycling Brief, Rules, and Memory instead of Note and List.
+- `Cheatsheet Sidekick: Insert Guides (Brief + Rules)` pulls your briefs and rules as one formatted markdown block and inserts it at the cursor, which is the thing to drop into a `CLAUDE.md` or `AGENTS.md`. If you have none yet, it tells you so rather than inserting nothing.
 
 ## Plans and limits
 
-This extension's usage aligns with whatever plan your Cheatsheet account is on. Search and insert work on any account for both cheats and Tasks, while creating either from VS Code needs a Pro plan (Pro also unlocks Vault on the site itself, and raises your daily API quota). See [Cheatsheet's plans](https://cheats.aarontrotter.com/billing) for the details.
+This extension's usage aligns with whatever plan your Cheatsheet account is on. Search and insert work on any account for both cheats and Tasks, while creating either from VS Code needs a Pro plan (Pro also raises your daily API quota, and lifts the item caps on the site's own Vault, Tasks, Brain, Pennies, and Projects sections, which a free account can use up to 5 items each). See [Cheatsheet's plans](https://cheats.aarontrotter.com/billing) for the details.
 
 A couple of other things worth knowing:
 
